@@ -104,6 +104,17 @@ HTML = """
     <div style="font-size:0.65rem; font-family:'IBM Plex Mono',monospace; color:var(--muted); margin-top:0.2rem;">pouze při prvním použití</div>
   </div>
 </nav>
+<div id="resumeModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.85); z-index:500; display:none; align-items:center; justify-content:center;">
+  <div style="background:var(--surface); border:1px solid var(--border); border-radius:4px; padding:2rem; max-width:420px; width:90%;">
+    <p style="font-family:'IBM Plex Mono',monospace; color:var(--accent); font-size:0.85rem; margin-bottom:0.5rem; text-transform:uppercase; letter-spacing:0.05em;">Přerušené stahování</p>
+    <p id="resumeText" style="font-family:'IBM Plex Mono',monospace; color:var(--muted); font-size:0.78rem; margin-bottom:1.5rem;"></p>
+    <div style="display:flex; gap:1rem;">
+      <button class="btn" onclick="resumeDecision(true)" style="flex:1;">▶ Pokračovat</button>
+      <button class="btn" onclick="resumeDecision(false)" style="flex:1; background:transparent; color:var(--red); border:1px solid var(--red);">↺ Začít znovu</button>
+    </div>
+  </div>
+</div>
+
 <div id="terminator-flash"></div>
 <button id="scrollTop" onclick="window.scrollTo({top:0,behavior:'smooth'})" style="display:none; position:fixed; bottom:2rem; right:2rem; background:var(--accent); color:#0f0f0f; border:none; border-radius:3px; padding:0.6rem 0.9rem; font-family:'IBM Plex Mono',monospace; font-size:0.8rem; font-weight:600; cursor:pointer; z-index:100; opacity:0.85;">↑</button>
 <div class="container" style="margin-top:4.5rem; max-width:680px; margin-left:auto; margin-right:auto;">
@@ -170,6 +181,16 @@ HTML = """
 
 <script>
 let evtSource = null;
+let resumePending = false;
+
+async function resumeDecision(doResume) {
+  document.getElementById('resumeModal').style.display = 'none';
+  await fetch('/resume-decision', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({resume: doResume})
+  });
+}
 
 async function loginToLibrary() {
   const btn = document.getElementById('btnLogin');
@@ -383,6 +404,13 @@ def open_login():
     threading.Thread(target=run_login, daemon=True).start()
     return jsonify({'ok': True})
 
+@app.route('/resume-decision', methods=['POST'])
+def resume_decision():
+    data = request.json
+    flag = Path.home() / ('.kramerius_resume' if data.get('resume') else '.kramerius_resume_cancel')
+    flag.touch()
+    return jsonify({'ok': True})
+
 @app.route('/toggle-fast', methods=['POST'])
 def toggle_fast():
     fast_file = Path.home() / '.kramerius_fast'
@@ -474,14 +502,32 @@ def start():
 def pause_route():
     global current_proc
     if current_proc:
-        current_proc.send_signal(signal.SIGSTOP)
+        try:
+            if sys.platform == 'win32':
+                import ctypes
+                ctypes.windll.kernel32.SuspendThread(
+                    ctypes.windll.kernel32.OpenThread(0x0002, False, current_proc.pid)
+                )
+            else:
+                current_proc.send_signal(signal.SIGSTOP)
+        except Exception as e:
+            print(f"Pause error: {e}")
     return jsonify({'ok': True})
 
 @app.route('/resume', methods=['POST'])
 def resume_route():
     global current_proc
     if current_proc:
-        current_proc.send_signal(signal.SIGCONT)
+        try:
+            if sys.platform == 'win32':
+                import ctypes
+                ctypes.windll.kernel32.ResumeThread(
+                    ctypes.windll.kernel32.OpenThread(0x0002, False, current_proc.pid)
+                )
+            else:
+                current_proc.send_signal(signal.SIGCONT)
+        except Exception as e:
+            print(f"Resume error: {e}")
     return jsonify({'ok': True})
 
 @app.route('/stop', methods=['POST'])

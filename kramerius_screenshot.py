@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+import sys
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
 """
 Kramerius Screenshot Downloader
 Použití:
@@ -224,6 +228,18 @@ def main():
         except:
             pass
 
+    # Check for interrupted download
+    existing = sorted(TEMP_DIR.glob(f"{session_id}_*.jpg"))
+    resume_from = 0
+    if existing:
+        if "--no-resume" in sys.argv:
+            for f in existing:
+                f.unlink()
+            print("→ Začínám od začátku")
+        else:
+            resume_from = int(existing[-1].stem.split('_')[-1]) + 1
+            print(f"→ Pokračuji od stránky {resume_from} ({len(existing)} stránek již hotovo)")
+
     clear_singleton_lock()
     sleep_proc = prevent_sleep()
 
@@ -267,8 +283,10 @@ def main():
             page_uuids = page_uuids[:2]
             print(f"→ Testovací režim: 2 stránky")
 
-        count = 0
+        count = len(existing) if resume_from > 0 else 0
         for i, pid in enumerate(page_uuids):
+            if i < resume_from:
+                continue
             if stop_requested:
                 print(f"\n→ Zastaveno na stránce {i+1}, ukládám {count} stránek...")
                 break
