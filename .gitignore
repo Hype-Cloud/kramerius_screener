@@ -1,0 +1,12 @@
+.kramerius_profile/
+.kramerius_temp/
+.kramerius_fast
+.kramerius_resume
+.kramerius_resume_cancel
+__pycache__/
+*.pyc
+*.pdf
+dist/
+build/
+*.spec
+.DS_Store
